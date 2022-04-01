@@ -19,6 +19,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
 	"github.com/gorilla/websocket"
 )
 
@@ -48,6 +49,9 @@ type FrameDataDecoded struct {
 
 var frameDataDecoded FrameDataDecoded
 var window *fyne.Window
+var canvImgOrig canvas.Image
+var canvImgProj canvas.Image
+var canvImgDummy canvas.Image
 
 func main() {
 	interrupt = make(chan os.Signal)
@@ -56,41 +60,49 @@ func main() {
 	go showFrames()
 	//<-interrupt
 	//log.Println("Received SIGINT interrupt signal.")
-	go func() {
-		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			mpw := multipart.NewWriter(w)
-			w.Header().Add("Content-Type",
-				fmt.Sprintf("multipart/x-mixed-replace; boundary=\"%v\"", mpw.Boundary()))
-			//w.Header().Add("Content-Type", mpw.FormDataContentType())
-			w.WriteHeader(http.StatusOK)
+	go startServer()
 
-			partHdr := textproto.MIMEHeader(map[string][]string{})
-			partHdr.Add("Content-Disposition", "inline")
-
-			func() {
-				frameDataDecoded.mutex.Lock()
-				defer frameDataDecoded.mutex.Unlock()
-				if frameDataDecoded.ImgOrig == nil {
-					return
-				}
-				partHdr.Add("Content-Type", "image/jpeg")
-				part, err := mpw.CreatePart(partHdr)
-				if err != nil {
-					fmt.Println(err)
-					return
-				}
-				part.Write(frameDataDecoded.ImgOrig)
-			}()
-
-			mpw.Close()
-		})
-		http.ListenAndServe("localhost:8000", nil)
-	}()
 	a := app.New()
 	w := a.NewWindow("Output")
 	w.Resize(fyne.NewSize(640, 480))
 	window = &w
+	canvImgOrig.FillMode = canvas.ImageFillContain
+	canvImgProj.FillMode = canvas.ImageFillContain
+	cont := container.NewGridWithColumns(2,
+		&canvImgOrig, &canvImgDummy, &canvImgDummy, &canvImgProj)
+	w.SetContent(cont)
 	w.ShowAndRun()
+}
+
+func startServer() {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		mpw := multipart.NewWriter(w)
+		w.Header().Add("Content-Type",
+			fmt.Sprintf("multipart/x-mixed-replace; boundary=\"%v\"", mpw.Boundary()))
+		//w.Header().Add("Content-Type", mpw.FormDataContentType())
+		w.WriteHeader(http.StatusOK)
+
+		partHdr := textproto.MIMEHeader(map[string][]string{})
+		partHdr.Add("Content-Disposition", "inline")
+
+		func() {
+			frameDataDecoded.mutex.Lock()
+			defer frameDataDecoded.mutex.Unlock()
+			if frameDataDecoded.ImgOrig == nil {
+				return
+			}
+			partHdr.Add("Content-Type", "image/jpeg")
+			part, err := mpw.CreatePart(partHdr)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			part.Write(frameDataDecoded.ImgOrig)
+		}()
+
+		mpw.Close()
+	})
+	http.ListenAndServe("localhost:8000", nil)
 }
 
 func showFrames() {
@@ -99,19 +111,26 @@ func showFrames() {
 		if window == nil {
 			continue
 		}
-		img := func() image.Image {
+		imgOrig, imgProj := func() (image.Image, image.Image) {
 			frameDataDecoded.mutex.Lock()
 			defer frameDataDecoded.mutex.Unlock()
-			r := bytes.NewReader(frameDataDecoded.ImgOrig)
-			res, _ := jpeg.Decode(r)
-			return res
+			rOrig := bytes.NewReader(frameDataDecoded.ImgOrig)
+			resOrig, _ := jpeg.Decode(rOrig)
+			rProj := bytes.NewReader(frameDataDecoded.ImgProj)
+			resProj, _ := jpeg.Decode(rProj)
+			return resOrig, resProj
 		}()
-		if img == nil {
-			continue
+		if imgOrig != nil {
+			canvImgOrig.Image = imgOrig
+			canvas.Refresh(&canvImgOrig)
 		}
-		log.Println(img.Bounds())
-		canvImg := canvas.NewImageFromImage(img)
-		(*window).SetContent(canvImg)
+		if imgProj != nil {
+			canvImgProj.Image = imgProj
+			canvas.Refresh(&canvImgProj)
+		}
+		//log.Println(img.Bounds())
+		//canvImg := canvas.NewImageFromImage(img)
+		//(*window).SetContent(canvImg)
 	}
 }
 
