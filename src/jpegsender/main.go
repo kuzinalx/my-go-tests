@@ -52,8 +52,12 @@ var window *fyne.Window
 var canvImgOrig canvas.Image
 var canvImgProj canvas.Image
 var canvImgDummy canvas.Image
+var contentBoth *fyne.Container
+var contentOrig *fyne.Container
+var contentProj *fyne.Container
 
 func main() {
+
 	interrupt = make(chan os.Signal)
 	signal.Notify(interrupt, os.Interrupt)
 	go startWebsocketClient()
@@ -68,10 +72,29 @@ func main() {
 	window = &w
 	canvImgOrig.FillMode = canvas.ImageFillContain
 	canvImgProj.FillMode = canvas.ImageFillContain
-	cont := container.NewGridWithColumns(2,
+	contentBoth = container.NewGridWithColumns(2,
 		&canvImgOrig, &canvImgDummy, &canvImgDummy, &canvImgProj)
-	w.SetContent(cont)
+	contentOrig = container.NewGridWithColumns(1, &canvImgOrig)
+	contentProj = container.NewGridWithColumns(1, &canvImgProj)
+	w.SetContent(contentBoth)
+	w.Canvas().SetOnTypedKey(handleKeyStrokes)
 	w.ShowAndRun()
+}
+
+func handleKeyStrokes(k *fyne.KeyEvent) {
+	if k.Name == fyne.Key0 {
+		(*window).SetContent(contentBoth)
+		(*window).Show()
+	} else if k.Name == fyne.Key1 {
+		(*window).SetContent(contentOrig)
+		(*window).Show()
+	} else if k.Name == fyne.Key2 {
+		(*window).SetContent(contentProj)
+		(*window).Show()
+	}
+	if k.Name == fyne.KeyEscape {
+		(*window).Close()
+	}
 }
 
 func startServer() {
