@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -11,8 +12,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
-	"os"
-	"os/signal"
 	"sync"
 	"time"
 
@@ -22,8 +21,6 @@ import (
 	"fyne.io/fyne/v2/container"
 	"github.com/gorilla/websocket"
 )
-
-var interrupt chan os.Signal
 
 type MessageInfo struct {
 	Action string `json:"action"`
@@ -57,14 +54,15 @@ var contentOrig *fyne.Container
 var contentProj *fyne.Container
 
 func main() {
+	var serverUrl string
+	var port int
+	flag.StringVar(&serverUrl, "url", "ws://localhost:8554/frames", "Server URL to connect")
+	flag.IntVar(&port, "port", 8000, "Port to create HTTP server")
+	flag.Parse()
 
-	interrupt = make(chan os.Signal)
-	signal.Notify(interrupt, os.Interrupt)
-	go startWebsocketClient()
+	go startWebsocketClient(serverUrl)
 	go showFrames()
-	//<-interrupt
-	//log.Println("Received SIGINT interrupt signal.")
-	go startServer()
+	go startServer(port)
 
 	a := app.New()
 	w := a.NewWindow("Output")
@@ -97,7 +95,7 @@ func handleKeyStrokes(k *fyne.KeyEvent) {
 	}
 }
 
-func startServer() {
+func startServer(port int) {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		mpw := multipart.NewWriter(w)
 		w.Header().Add("Content-Type",
@@ -125,7 +123,9 @@ func startServer() {
 
 		mpw.Close()
 	})
-	http.ListenAndServe("localhost:8000", nil)
+	addr := "localhost:" + fmt.Sprint(port)
+	log.Printf("Start HTTP server at: %v\n", addr)
+	http.ListenAndServe(addr, nil)
 }
 
 func showFrames() {
@@ -157,8 +157,8 @@ func showFrames() {
 	}
 }
 
-func startWebsocketClient() {
-	socketUrl := "ws://localhost:8554" + "/frames"
+func startWebsocketClient(socketUrl string) {
+	//socketUrl := "ws://localhost:8554" + "/frames"
 	conn, _, err := websocket.DefaultDialer.Dial(socketUrl, nil)
 	if err != nil {
 		log.Fatal("Error connecting to Websocket Server:", err)
