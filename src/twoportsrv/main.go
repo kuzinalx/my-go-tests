@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 
@@ -12,14 +13,21 @@ type Msg struct {
 	Url     string `json:"url"`
 }
 
+const ServerAddress = "127.0.0.1"
+const PortAdmin = 8081
+const PortUser = 8082
+
 func main() {
-	http.HandleFunc("/foo", func(w http.ResponseWriter, r *http.Request) {
-		serveWebsocket(w, r)
-	})
-	http.HandleFunc("/bar", func(w http.ResponseWriter, r *http.Request) {
-		serveWebsocket(w, r)
-	})
-	log.Fatal(http.ListenAndServe("localhost:9000", nil))
+	go startWebServer(PortAdmin)
+	startWebServer(PortUser)
+}
+
+func startWebServer(port int) {
+	mux := http.NewServeMux()
+	host := ServerAddress + ":" + fmt.Sprint(port)
+	mux.HandleFunc("/", serveWebsocket)
+	log.Print("Start listening at " + host)
+	http.ListenAndServe(host, mux)
 }
 
 func serveWebsocket(w http.ResponseWriter, r *http.Request) {
@@ -27,7 +35,7 @@ func serveWebsocket(w http.ResponseWriter, r *http.Request) {
 	upgrader.CheckOrigin = func(r *http.Request) bool { return true }
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Print("Error during connection upgradation:", err)
+		log.Print("Error during connection upgrade:", err)
 		return
 	}
 	defer conn.Close()
